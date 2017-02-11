@@ -18,7 +18,7 @@ def read_data(plot_hist=False):
 
     """
     A = pd.read_csv('data/driving_log.csv')
-    turns = (A['steering'] >= 0.05) | (A['steering'] <= -0.05)
+    turns = (A['steering'] >= TURN_THRESHOLD) | (A['steering'] <= -TURN_THRESHOLD)
     A_turn = A[turns]         # turning
     A_straight = A[~turns]    # straight
 
@@ -54,18 +54,28 @@ def val_data(A):
 
     return np.array(x), np.array(y)
 
+def get_image_data(A,i,mode):
+    modes = {1:('center',0.0),
+             2:('left', -0.3),
+             3:('right', 0.3)}
+    path = os.path.join('data',A[modes[mode][0]][i].strip())
+    xi = img_to_array(load_img(path))
+    yi = A.steering[i]+modes[mode][1]
+    return xi,yi
+    
+
 def data_generator(A,BATCH_SIZE):
     start = 0
     end = start + BATCH_SIZE
     while end < A.shape[0]:
         x, y = [], []
         for i in range(start, end):
-            path = os.path.join('data', A.center[i])
-            xi = img_to_array(load_img(path))
-            yi = A.steering[i]
+            mode = np.random.randint(1,3)
+            xi,yi = get_image_data(A,i,mode)
             x.append(xi)
-            y.append(A.steering[i])
+            y.append(yi)
 
+           
         start += BATCH_SIZE
         end += BATCH_SIZE
         if end > A.shape[0]:
@@ -81,7 +91,7 @@ def nvidia():
     model.add(BatchNormalization(input_shape=(160,320,3)))
 
     # Layer 2
-    model.add(Convolution2D(24,3,3,border_mode='valid',activation='elu',subsample=(2,2)))
+    model.add(Convolution2D(24,5,5,border_mode='valid',activation='elu',subsample=(2,2)))
     model.add(MaxPooling2D())
 
     # Layer 3
@@ -111,7 +121,7 @@ def nvidia():
     model.add(Dense(10,activation='elu'))
 
     # Output
-    model.add(Dense(1, activation='linear'))
+    model.add(Dense(1, activation='sigmoid'))
 
     # Training
     model.compile(loss='mse',optimizer='adam')
@@ -151,8 +161,8 @@ FILE='model.h5'
 TURN_THRESHOLD = 0.05   # Threshold on steering angle to pick turns
 N_STRAIGHT = 600        # Number of straight images to pick
 N_VAL = 256
-BATCH_SIZE = 256
-NB_EPOCHS = 10
+BATCH_SIZE = 128
+NB_EPOCHS = 2
 
 train(FILE)
 #evaluate(FILE)
