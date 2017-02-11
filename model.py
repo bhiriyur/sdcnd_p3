@@ -142,27 +142,25 @@ def train(FILE):
     net.save(FILE)
     K.clear_session()
 
-# def load(saved_file):
-#     return load_model(saved_file)
-#
-#
-# def evaluate(FILE):
-#     net = load_model(FILE)
-#     G = get_data(256)
-#     x,y = next(G)
-#     print(x.shape,y.shape)
-#     output = net.predict_on_batch(x)
-#     for y_act,y_pred in zip(y,output):
-#         print("ACTUAL/PREDICTED  = {} {}".format(y_act,y_pred))
-#     K.clear_session()
+
+def evaluate(FILE):
+    net = load_model(FILE)
+    A_train,A_val = read_data()
+
+    for i in range(len(A_val)):
+        xi,yi = get_image_data(A_val,i,1)
+        output = net.predict_on_batch(x)
+        print("ACTUAL/PREDICTED  = {:8.4f} {:8.4f}".format(yi,output))
+    K.clear_session()
 
 
-FILE='model.h5'
-TURN_THRESHOLD = 0.05   # Threshold on steering angle to pick turns
-N_STRAIGHT = 600        # Number of straight images to pick
-N_VAL = 256
-BATCH_SIZE = 128
-NB_EPOCHS = 2
-
-train(FILE)
-#evaluate(FILE)
+if __name__=='__main__':    
+    
+    FILE='model.h5'
+    TURN_THRESHOLD = 0.05   # Threshold on steering angle to pick turns
+    N_STRAIGHT = 600        # Number of straight images to pick
+    N_VAL = 256
+    BATCH_SIZE = 128
+    NB_EPOCHS = 2
+    #train(FILE)
+    evaluate(FILE)
