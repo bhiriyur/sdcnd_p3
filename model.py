@@ -146,11 +146,11 @@ def train(FILE):
 def evaluate(FILE):
     net = load_model(FILE)
     A_train,A_val = read_data()
-
+    A_val = A_val.sample(frac=1).reset_index(drop=True)
     for i in range(len(A_val)):
         xi,yi = get_image_data(A_val,i,1)
-        output = net.predict_on_batch(x)
-        print("ACTUAL/PREDICTED  = {:8.4f} {:8.4f}".format(yi,output))
+        output = net.predict_on_batch(np.array([xi]))
+        print("ACTUAL/PREDICTED  = {:8.4f} {:8.4e}".format(yi,output[0][0]))
     K.clear_session()
 
 
