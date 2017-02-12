@@ -1,5 +1,5 @@
 from keras.models import Sequential, load_model
-from keras.layers import Convolution2D, Dense, MaxPooling2D, Dropout, BatchNormalization, Flatten, Input
+from keras.layers import Convolution2D, Dense, MaxPooling2D, Dropout, BatchNormalization, Flatten, Input, Lambda, ELU
 from keras.preprocessing.image import img_to_array, load_img
 from keras import backend as K
 import os
@@ -85,6 +85,30 @@ def data_generator(A,BATCH_SIZE):
         yield np.array(x), np.array(y)
 
 
+def comma_ai(time_len=1):
+    ch, row, col = 3, 160, 320  # camera format
+
+    model = Sequential()
+    model.add(Lambda(lambda x: x/127.5 - 1.,
+                     input_shape=(row, col, ch),
+                     output_shape=(row, col, ch)))
+    model.add(Convolution2D(16, 8, 8, subsample=(4, 4), border_mode="same"))
+    model.add(ELU())
+    model.add(Convolution2D(32, 5, 5, subsample=(2, 2), border_mode="same"))
+    model.add(ELU())
+    model.add(Convolution2D(64, 5, 5, subsample=(2, 2), border_mode="same"))
+    model.add(Flatten())
+    model.add(Dropout(.2))
+    model.add(ELU())
+    model.add(Dense(512))
+    model.add(Dropout(.5))
+    model.add(ELU())
+    model.add(Dense(1))
+
+    model.compile(optimizer="adam", loss="mse")
+    
+    return model
+
 def nvidia():
     model = Sequential()
 
@@ -92,23 +116,23 @@ def nvidia():
     model.add(BatchNormalization(input_shape=(160,320,3)))
 
     # Layer 2
-    model.add(Convolution2D(24,5,5,border_mode='valid',activation='elu',subsample=(2,2)))
+    model.add(Convolution2D(24,5,5,activation='elu',subsample=(2,2)))
     model.add(MaxPooling2D())
 
     # Layer 3
-    model.add(Convolution2D(36,3,3,border_mode='valid',activation='elu',subsample=(2,2)))
+    model.add(Convolution2D(36,3,3,activation='elu',subsample=(2,2)))
     model.add(MaxPooling2D())
 
     # Layer 4
-    model.add(Convolution2D(48,3,3,border_mode='valid',activation='elu',subsample=(2,2)))
-
+    model.add(Convolution2D(48,3,3,activation='elu',subsample=(2,2)))
+    
     # Layer 5
-    model.add(Convolution2D(64,3,3,border_mode='valid',activation='elu',subsample=(1,1)))
-    model.add(MaxPooling2D())
+    model.add(Convolution2D(64,3,3,activation='elu',subsample=(1,1)))
+
 
     # Layer 6a
     model.add(Flatten())
-    model.add(Dropout(0.5))
+    model.add(Dropout(0.2))
 
     # Layer 7
     model.add(Dense(100,activation='elu'))
@@ -122,7 +146,7 @@ def nvidia():
     model.add(Dense(10,activation='elu'))
 
     # Output
-    model.add(Dense(1, activation='sigmoid'))
+    model.add(Dense(1, activation='linear'))
 
     # Training
     model.compile(loss='mse',optimizer='adam')
@@ -132,6 +156,7 @@ def nvidia():
 
 def train(FILE):
     net = nvidia()
+    #net = comma_ai()
     A_train,A_val = read_data()
     N = int(A_train.shape[0]/BATCH_SIZE)*BATCH_SIZE
     print("Number of examples available = {}".format(A_train.shape[0]))
@@ -148,20 +173,29 @@ def evaluate(FILE):
     net = load_model(FILE)
     A_train,A_val = read_data()
     A_val = A_val.sample(frac=1).reset_index(drop=True)
+    y_act, y_pred = [], []
     for i in range(len(A_val)):
         xi,yi = get_image_data(A_val,i,1)
         output = net.predict_on_batch(np.array([xi]))
-        print("ACTUAL/PREDICTED  = {:8.4f} {:8.4e}".format(yi,output[0][0]))
+        print("ACTUAL/PREDICTED  = {:8.4f} {:8.4f}".format(yi,output[0][0]))
+        y_act.append(yi)
+        y_pred.append(output[0][0])
     K.clear_session()
+    
+    plt.figure()
+    plt.plot(y_act,name='Actual',color='b')
+    plt.plot(y_act,name='Predicted',color='r')    
+    plt.legend(loc='best')
+    plt.show()
 
 
 if __name__=='__main__':    
     
     FILE='model.h5'
     TURN_THRESHOLD = 0.05   # Threshold on steering angle to pick turns
-    N_STRAIGHT = 600        # Number of straight images to pick
+    N_STRAIGHT = 200        # Number of straight images to pick
     N_VAL = 256
     BATCH_SIZE = 128
-    NB_EPOCHS = 2
+    NB_EPOCHS = 10
     train(FILE)
     evaluate(FILE)
