@@ -70,7 +70,8 @@ def data_generator(A,BATCH_SIZE):
     while end < A.shape[0]:
         x, y = [], []
         for i in range(start, end):
-            mode = np.random.randint(1,3)
+            #mode = np.random.randint(1,3)
+            mode = 1
             xi,yi = get_image_data(A,i,mode)
             x.append(xi)
             y.append(yi)
@@ -162,5 +163,5 @@ if __name__=='__main__':
     N_VAL = 256
     BATCH_SIZE = 128
     NB_EPOCHS = 2
-    #train(FILE)
+    train(FILE)
     evaluate(FILE)
