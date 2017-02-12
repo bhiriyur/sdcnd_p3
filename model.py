@@ -1,6 +1,6 @@
 from keras.models import Sequential, load_model
 from keras.layers import Convolution2D, Dense, MaxPooling2D, Dropout, BatchNormalization, Flatten, Input, Lambda, ELU
-from keras.preprocessing.image import img_to_array, load_img
+from keras.preprocessing.image import img_to_array, load_img, flip_axis
 from keras import backend as K
 import os
 import pandas as pd
@@ -54,13 +54,17 @@ def val_data(A):
 
     return np.array(x), np.array(y)
 
-def get_image_data(A,i,mode):
+def get_image_data(A,i,mode,flip=0):
     modes = {1:('center',0.0),
              2:('left', -0.3),
              3:('right', 0.3)}
     path = os.path.join('data',A[modes[mode][0]][i].strip())
     xi = img_to_array(load_img(path))
     yi = A.steering[i]+modes[mode][1]
+    if flip==1:
+        xi = flip_axis(xi,1)
+        yi = -yi
+
     return xi,yi
     
 
@@ -70,9 +74,9 @@ def data_generator(A,BATCH_SIZE):
     while end < A.shape[0]:
         x, y = [], []
         for i in range(start, end):
-            #mode = np.random.randint(1,3)
-            mode = 1
-            xi,yi = get_image_data(A,i,mode)
+            mode = 1 #np.random.randint(1,4)
+            flip = np.random.randint(0,2)
+            xi,yi = get_image_data(A,i,mode,flip)
             x.append(xi)
             y.append(yi)
 
@@ -132,14 +136,14 @@ def nvidia():
 
     # Layer 6a
     model.add(Flatten())
-    model.add(Dropout(0.2))
+    model.add(Dropout(0.5))
 
     # Layer 7
-    model.add(Dense(100,activation='elu'))
+    model.add(Dense(500,activation='elu'))
     model.add(Dropout(0.5))
 
     # Layer 8
-    model.add(Dense(50,activation='elu'))
+    model.add(Dense(100,activation='elu'))
     model.add(Dropout(0.5))
 
     # Layer 9
@@ -158,7 +162,7 @@ def train(FILE):
     net = nvidia()
     #net = comma_ai()
     A_train,A_val = read_data()
-    N = int(A_train.shape[0]/BATCH_SIZE)*BATCH_SIZE
+    N = 5*int(A_train.shape[0]/BATCH_SIZE)*BATCH_SIZE
     print("Number of examples available = {}".format(A_train.shape[0]))
     print("Batch size = {}".format(BATCH_SIZE))
     print("Samples per epoch = {}".format(N))
