@@ -1,6 +1,6 @@
 from keras.models import Sequential, load_model
 from keras.layers import Convolution2D, Dense, MaxPooling2D, Dropout, BatchNormalization, Flatten, Input, Lambda, ELU
-from keras.preprocessing.image import img_to_array, load_img, flip_axis
+from keras.preprocessing.image import img_to_array, load_img, flip_axis, random_shift
 from keras import backend as K
 import os
 import pandas as pd
@@ -55,12 +55,13 @@ def val_data(A):
 
     return np.array(x), np.array(y)
 
-def get_image_data(A,i,mode,flip=0):
+def get_image_data(A,i,mode,flip=0,vshift=0.0,hshift=0.0):
     modes = {1:('center',0.0),
              2:('left', -0.3),
              3:('right', 0.3)}
     path = os.path.join('data',A[modes[mode][0]][i].strip())
     xi = img_to_array(load_img(path))
+    xi = random_shift(xi,vshift,hshift,0,1,2)
     yi = A.steering[i]+modes[mode][1]
     if flip==1:
         xi = flip_axis(xi,1)
@@ -78,7 +79,8 @@ def data_generator(A,BATCH_SIZE):
             mode = np.random.choice([1,1,2,3],1)
             flip = np.random.randint(0,2)
             if mode[0] != 1: flip = 0
-            xi,yi = get_image_data(A,i,mode[0],flip)
+            vshift,hshift = 0.2*np.random.random(2)
+            xi,yi = get_image_data(A,i,mode[0],flip,0,hshift)
             x.append(xi)
             y.append(yi)
 
@@ -180,7 +182,7 @@ def train(FILE):
     print("Number of examples available = {}".format(A_train.shape[0]))
     print("Batch size = {}".format(BATCH_SIZE))
     print("Samples per epoch = {}".format(N))
-    hist_A(A_train,BATCH_SIZE,N)
+    #hist_A(A_train,BATCH_SIZE,N)
     T = data_generator(A_train,BATCH_SIZE)
     V = data_generator(A_val,BATCH_SIZE)
     net.fit_generator(T,samples_per_epoch=N,nb_epoch=NB_EPOCHS,validation_data=val_data(A_val),nb_val_samples=N_VAL)
