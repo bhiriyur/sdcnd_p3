@@ -7,6 +7,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import sys
+from tqdm import tqdm
 
 def read_data(plot_hist=False):
     """
@@ -74,9 +75,10 @@ def data_generator(A,BATCH_SIZE):
     while end < A.shape[0]:
         x, y = [], []
         for i in range(start, end):
-            mode = 1 #np.random.randint(1,4)
+            mode = np.random.choice([1,1,2,3],1)
             flip = np.random.randint(0,2)
-            xi,yi = get_image_data(A,i,mode,flip)
+            if mode[0] != 1: flip = 0
+            xi,yi = get_image_data(A,i,mode[0],flip)
             x.append(xi)
             y.append(yi)
 
@@ -156,6 +158,18 @@ def nvidia():
     model.compile(loss='mse',optimizer='adam')
     return model
 
+def hist_A(A,BATCH_SIZE,N):
+
+    T = data_generator(A,BATCH_SIZE)
+    y = []
+    for i in tqdm(range(int(N/BATCH_SIZE))):
+        _,yi = next(T)
+        y.append(yi)
+
+    plt.hist(np.concatenate(y),bins=np.linspace(-1, 1, 50),color='b')
+    plt.show()
+    
+
 
 
 def train(FILE):
@@ -166,6 +180,7 @@ def train(FILE):
     print("Number of examples available = {}".format(A_train.shape[0]))
     print("Batch size = {}".format(BATCH_SIZE))
     print("Samples per epoch = {}".format(N))
+    hist_A(A_train,BATCH_SIZE,N)
     T = data_generator(A_train,BATCH_SIZE)
     V = data_generator(A_val,BATCH_SIZE)
     net.fit_generator(T,samples_per_epoch=N,nb_epoch=NB_EPOCHS,validation_data=val_data(A_val),nb_val_samples=N_VAL)
