@@ -183,8 +183,8 @@ def evaluate(FILE):
     K.clear_session()
     
     plt.figure()
-    plt.plot(y_act,name='Actual',color='b')
-    plt.plot(y_act,name='Predicted',color='r')    
+    plt.plot(y_act,label='Actual',color='b')
+    plt.plot(y_pred,label='Predicted',color='r')
     plt.legend(loc='best')
     plt.show()
 
@@ -196,6 +196,6 @@ if __name__=='__main__':
     N_STRAIGHT = 200        # Number of straight images to pick
     N_VAL = 256
     BATCH_SIZE = 128
-    NB_EPOCHS = 10
+    NB_EPOCHS = 4
     train(FILE)
     evaluate(FILE)
