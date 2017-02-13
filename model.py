@@ -1,6 +1,8 @@
 from keras.models import Sequential, load_model
-from keras.layers import Convolution2D, Dense, MaxPooling2D, Dropout, BatchNormalization, Flatten, Input, Lambda, ELU
+from keras.layers import Convolution2D, Dense, MaxPooling2D, Dropout, BatchNormalization
+from keras.layers import Flatten, Input, Lambda, ELU, Cropping2D
 from keras.preprocessing.image import img_to_array, load_img, flip_axis, random_shift
+from keras.optimizers import Adam
 from keras import backend as K
 import os
 import pandas as pd
@@ -149,43 +151,63 @@ def nvidia():
     """
     model = Sequential()
 
+    # Crop layer
+    model.add(Cropping2D(cropping=((50,20), (0,0)), input_shape=(160,320,3)))
+    print("LAYER: {:30s} {}".format('Cropping',model.layers[-1].output_shape))
+
     # Layer 1
-    model.add(BatchNormalization(input_shape=(160,320,3)))
+    model.add(BatchNormalization())
+    print("LAYER: {:30s} {}".format('Batch-Normalization',model.layers[-1].output_shape))         
 
     # Layer 2
-    model.add(Convolution2D(24,5,5,activation='elu',subsample=(2,2)))
+    model.add(Convolution2D(24,3,3,border_mode='same',activation='elu',subsample=(2,2)))
+    print("LAYER: {:30s} {}".format('Conv2D-24-3x3-s2',model.layers[-1].output_shape))    
     model.add(MaxPooling2D())
+    print("LAYER: {:30s} {}".format('Maxpool2D',model.layers[-1].output_shape))    
 
     # Layer 3
-    model.add(Convolution2D(36,3,3,activation='elu',subsample=(2,2)))
+    model.add(Convolution2D(36,3,3,border_mode='same',activation='elu',subsample=(2,2)))
+    print("LAYER: {:30s} {}".format('Conv2D-36-3x3-s2',model.layers[-1].output_shape))        
     model.add(MaxPooling2D())
-
+    print("LAYER: {:30s} {}".format('Maxpool2D',model.layers[-1].output_shape))
+    
     # Layer 4
-    model.add(Convolution2D(48,3,3,activation='elu',subsample=(2,2)))
+    model.add(Convolution2D(48,3,3,border_mode='same',activation='elu',subsample=(1,1)))
+    print("LAYER: {:30s} {}".format('Conv2D-48-3x3-s1',model.layers[-1].output_shape))        
+    print("LAYER: {:30s} {}".format('Maxpool2D',model.layers[-1].output_shape))
     
     # Layer 5
     model.add(Convolution2D(64,3,3,activation='elu',subsample=(1,1)))
+    print("LAYER: {:30s} {}".format('Conv2D-64-3x3-s1',model.layers[-1].output_shape))        
 
     # Layer 6a
     model.add(Flatten())
     model.add(Dropout(0.5))
+    print("LAYER: {:30s} {}".format('Flatten',model.layers[-1].output_shape))    
 
+    
     # Layer 7
     model.add(Dense(500,activation='elu'))
     model.add(Dropout(0.5))
+    print("LAYER: {:30s} {}".format('FC',model.layers[-1].output_shape))        
+
 
     # Layer 8
     model.add(Dense(100,activation='elu'))
     model.add(Dropout(0.5))
+    print("LAYER: {:30s} {}".format('FC',model.layers[-1].output_shape))        
 
     # Layer 9
     model.add(Dense(10,activation='elu'))
+    print("LAYER: {:30s} {}".format('FC',model.layers[-1].output_shape))        
 
     # Output
     model.add(Dense(1, activation='linear'))
+    print("LAYER: {:30s} {}".format('OUTPUT',model.layers[-1].output_shape))        
 
     # Training
-    model.compile(loss='mse',optimizer='adam')
+    adamopt = Adam(lr=0.0001)
+    model.compile(loss='mse',optimizer=adamopt)
     return model
 
 
