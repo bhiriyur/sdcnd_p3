@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import sys
 from tqdm import tqdm
 
-def read_data(plot_hist=False):
+def read_data(plot_hist=True):
     """
     Reads the driving_log.csv and stores in a pandas dataframe.
     Analyzes the steering info and returns a balanced dataset with
@@ -19,15 +19,15 @@ def read_data(plot_hist=False):
 
     """
     A = pd.read_csv('data/driving_log.csv')
-    #turns = (A['steering'] >= TURN_THRESHOLD) | (A['steering'] <= -TURN_THRESHOLD)
-    #A_turn = A[turns]         # turning
-    #A_straight = A[~turns]    # straight
-    #
-    ## Keep a few straight ones
-    #A_merge = pd.concat([A_turn,A_straight.sample(N_STRAIGHT)])
+    turns = (A['steering'] >= TURN_THRESHOLD) | (A['steering'] <= -TURN_THRESHOLD)
+    A_turn = A[turns]         # turning
+    A_straight = A[~turns]    # straight
+    
+    # Keep a few straight ones
+    A_merge = pd.concat([A_turn,A_straight.sample(frac=(1-DROP_THRESHOLD))])
 
     # Shuffle rows
-    A_merge = A.sample(frac=1).reset_index(drop=True)
+    A_merge = A_merge.sample(frac=1).reset_index(drop=True)
 
     A_train = A_merge[:-N_VAL]
     A_val = A_merge[-N_VAL:]
@@ -57,8 +57,8 @@ def val_data(A):
 
 def get_image_data(A,i,mode,flip=0,vshift=0.0,hshift=0.0):
     modes = {1:('center',0.0),
-             2:('left',  0.4),
-             3:('right',-0.4)}
+             2:('left',  0.3),
+             3:('right',-0.3)}
     path = os.path.join('data',A[modes[mode][0]][i].strip())
     xi = img_to_array(load_img(path))
     xi = random_shift(xi,vshift,hshift,0,1,2)
@@ -79,8 +79,8 @@ def data_generator(A,BATCH_SIZE):
             i = np.random.randint(0,len(A))
 
             # Drop the selection with a certain probability if it's straight
-            if (abs(A['steering'][i]) < TURN_THRESHOLD) and (np.random.uniform()<=DROP_THRESHOLD):
-                continue
+            #if (abs(A['steering'][i]) < TURN_THRESHOLD) and (np.random.uniform()<=DROP_THRESHOLD):
+            #    continue
             
             # Pick center (prob = 67%), left (16%) or right (16%) image 
             mode = np.random.choice([1,1,1,1,2,3],1)
@@ -235,7 +235,6 @@ if __name__=='__main__':
     FILE='model.h5'
     TURN_THRESHOLD = 0.05   # Threshold on steering angle to pick turns
     DROP_THRESHOLD = 0.90   # Straight/Turning drop threshold
-    N_STRAIGHT = 200        # Number of straight images to pick
     N_VAL = 256
     BATCH_SIZE = 128
     N_SAMPLE = BATCH_SIZE*100
