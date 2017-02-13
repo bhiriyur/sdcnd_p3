@@ -57,8 +57,8 @@ def val_data(A):
 
 def get_image_data(A,i,mode,flip=0,vshift=0.0,hshift=0.0):
     modes = {1:('center',0.0),
-             2:('left', -0.3),
-             3:('right', 0.3)}
+             2:('left',  0.4),
+             3:('right',-0.4)}
     path = os.path.join('data',A[modes[mode][0]][i].strip())
     xi = img_to_array(load_img(path))
     xi = random_shift(xi,vshift,hshift,0,1,2)
@@ -85,7 +85,7 @@ def data_generator(A,BATCH_SIZE):
             # Pick center (prob = 67%), left (16%) or right (16%) image 
             mode = np.random.choice([1,1,1,1,2,3],1)
 
-            # If center image, flip with 50% probability
+            # If center camera image, flip with 50% probability
             flip = np.random.randint(0,2)
             if mode[0] != 1: flip = 0
 
@@ -201,7 +201,7 @@ def train(FILE):
     print("Number of examples available = {}".format(A_train.shape[0]))
     print("Batch size = {}".format(BATCH_SIZE))
     print("Samples per epoch = {}".format(N_SAMPLE))
-    #hist_A(A_train,BATCH_SIZE,N)
+    hist_A(A_train,BATCH_SIZE,N_SAMPLE)
     
     T = data_generator(A_train,BATCH_SIZE)
     net.fit_generator(T, samples_per_epoch=N_SAMPLE, nb_epoch=NB_EPOCHS,
@@ -234,7 +234,7 @@ if __name__=='__main__':
     
     FILE='model.h5'
     TURN_THRESHOLD = 0.05   # Threshold on steering angle to pick turns
-    DROP_THRESHOLD = 0.75   # Straight/Turning drop threshold
+    DROP_THRESHOLD = 0.90   # Straight/Turning drop threshold
     N_STRAIGHT = 200        # Number of straight images to pick
     N_VAL = 256
     BATCH_SIZE = 128
