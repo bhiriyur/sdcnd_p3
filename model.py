@@ -19,15 +19,15 @@ def read_data(plot_hist=False):
 
     """
     A = pd.read_csv('data/driving_log.csv')
-    turns = (A['steering'] >= TURN_THRESHOLD) | (A['steering'] <= -TURN_THRESHOLD)
-    A_turn = A[turns]         # turning
-    A_straight = A[~turns]    # straight
-
-    # Keep a few straight ones
-    A_merge = pd.concat([A_turn,A_straight.sample(N_STRAIGHT)])
+    #turns = (A['steering'] >= TURN_THRESHOLD) | (A['steering'] <= -TURN_THRESHOLD)
+    #A_turn = A[turns]         # turning
+    #A_straight = A[~turns]    # straight
+    #
+    ## Keep a few straight ones
+    #A_merge = pd.concat([A_turn,A_straight.sample(N_STRAIGHT)])
 
     # Shuffle rows
-    A_merge = A_merge.sample(frac=1).reset_index(drop=True)
+    A_merge = A.sample(frac=1).reset_index(drop=True)
 
     A_train = A_merge[:-N_VAL]
     A_val = A_merge[-N_VAL:]
@@ -71,29 +71,55 @@ def get_image_data(A,i,mode,flip=0,vshift=0.0,hshift=0.0):
     
 
 def data_generator(A,BATCH_SIZE):
-    start = 0
-    end = start + BATCH_SIZE
-    while end < A.shape[0]:
+    while True:
         x, y = [], []
-        for i in range(start, end):
-            mode = np.random.choice([1,1,2,3],1)
+        count = 0
+        while count < BATCH_SIZE:
+            # Select an image by random
+            i = np.random.randint(0,len(A))
+
+            # Drop the selection with a certain probability if it's straight
+            if (abs(A['steering'][i]) < TURN_THRESHOLD) and (np.random.uniform()<=DROP_THRESHOLD):
+                continue
+            
+            # Pick center (prob = 67%), left (16%) or right (16%) image 
+            mode = np.random.choice([1,1,1,1,2,3],1)
+
+            # If center image, flip with 50% probability
             flip = np.random.randint(0,2)
             if mode[0] != 1: flip = 0
-            vshift,hshift = 0.2*np.random.random(2)
-            xi,yi = get_image_data(A,i,mode[0],flip,vshift,0.0*hshift)
+
+            # Random shift in width and height
+            wshift,hshift = 0.2*np.random.random(2)
+            xi,yi = get_image_data(A,i,mode[0],flip,wshift,0.0*hshift)
             x.append(xi)
             y.append(yi)
 
+            count += 1
            
-        start += BATCH_SIZE
-        end += BATCH_SIZE
-        if end > A.shape[0]:
-            start = 0
-            end = BATCH_SIZE
         yield np.array(x), np.array(y)
 
+def hist_A(A,BATCH_SIZE,N):
+    """
+    Generate an epoch's worth of training data from
+    the generator and plot the histogram of steering angles
+    """
+
+    T = data_generator(A,BATCH_SIZE)
+    y = []
+    for i in tqdm(range(int(N/BATCH_SIZE))):
+        _,yi = next(T)
+        y.append(yi)
+
+    plt.hist(np.concatenate(y),bins=np.linspace(-1, 1, 50),color='b')
+    plt.show()
+    
 
 def comma_ai(time_len=1):
+    """
+    A variant of the comma.ai model
+    """
+    
     ch, row, col = 3, 160, 320  # camera format
 
     model = Sequential()
@@ -118,6 +144,9 @@ def comma_ai(time_len=1):
     return model
 
 def nvidia():
+    """
+    A variant of the nvidia model
+    """
     model = Sequential()
 
     # Layer 1
@@ -136,7 +165,6 @@ def nvidia():
     
     # Layer 5
     model.add(Convolution2D(64,3,3,activation='elu',subsample=(1,1)))
-
 
     # Layer 6a
     model.add(Flatten())
@@ -160,32 +188,24 @@ def nvidia():
     model.compile(loss='mse',optimizer='adam')
     return model
 
-def hist_A(A,BATCH_SIZE,N):
-
-    T = data_generator(A,BATCH_SIZE)
-    y = []
-    for i in tqdm(range(int(N/BATCH_SIZE))):
-        _,yi = next(T)
-        y.append(yi)
-
-    plt.hist(np.concatenate(y),bins=np.linspace(-1, 1, 50),color='b')
-    plt.show()
-    
-
-
 
 def train(FILE):
+    """
+    Build and train the network
+    """
     net = nvidia()
     #net = comma_ai()
+
     A_train,A_val = read_data()
-    N = 5*int(A_train.shape[0]/BATCH_SIZE)*BATCH_SIZE
+
     print("Number of examples available = {}".format(A_train.shape[0]))
     print("Batch size = {}".format(BATCH_SIZE))
-    print("Samples per epoch = {}".format(N))
+    print("Samples per epoch = {}".format(N_SAMPLE))
     #hist_A(A_train,BATCH_SIZE,N)
+    
     T = data_generator(A_train,BATCH_SIZE)
-    V = data_generator(A_val,BATCH_SIZE)
-    net.fit_generator(T,samples_per_epoch=N,nb_epoch=NB_EPOCHS,validation_data=val_data(A_val),nb_val_samples=N_VAL)
+    net.fit_generator(T, samples_per_epoch=N_SAMPLE, nb_epoch=NB_EPOCHS,
+                      validation_data=val_data(A_val), nb_val_samples=N_VAL)
     net.save(FILE)
     K.clear_session()
 
@@ -214,9 +234,11 @@ if __name__=='__main__':
     
     FILE='model.h5'
     TURN_THRESHOLD = 0.05   # Threshold on steering angle to pick turns
+    DROP_THRESHOLD = 0.75   # Straight/Turning drop threshold
     N_STRAIGHT = 200        # Number of straight images to pick
     N_VAL = 256
     BATCH_SIZE = 128
+    N_SAMPLE = BATCH_SIZE*100
     NB_EPOCHS = 4
     train(FILE)
     evaluate(FILE)
