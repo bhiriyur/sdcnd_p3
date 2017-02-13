@@ -61,7 +61,7 @@ def get_image_data(A,i,mode,flip=0,vshift=0.0,hshift=0.0):
              3:('right', 0.3)}
     path = os.path.join('data',A[modes[mode][0]][i].strip())
     xi = img_to_array(load_img(path))
-    xi = random_shift(xi,vshift,0,vshift,1,2)
+    xi = random_shift(xi,vshift,hshift,0,1,2)
     yi = A.steering[i]+modes[mode][1]
     if flip==1:
         xi = flip_axis(xi,1)
@@ -80,7 +80,7 @@ def data_generator(A,BATCH_SIZE):
             flip = np.random.randint(0,2)
             if mode[0] != 1: flip = 0
             vshift,hshift = 0.2*np.random.random(2)
-            xi,yi = get_image_data(A,i,mode[0],flip,0,hshift)
+            xi,yi = get_image_data(A,i,mode[0],flip,vshift,0.0*hshift)
             x.append(xi)
             y.append(yi)
 
