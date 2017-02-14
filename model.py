@@ -5,13 +5,14 @@ from keras.preprocessing.image import img_to_array, load_img, flip_axis, random_
 from keras.optimizers import Adam
 from keras import backend as K
 import os
+import cv2
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import sys
 from tqdm import tqdm
 
-def read_data(plot_hist=True):
+def read_data(plot_hist=False):
     """
     Reads the driving_log.csv and stores in a pandas dataframe.
     Analyzes the steering info and returns a balanced dataset with
@@ -24,7 +25,7 @@ def read_data(plot_hist=True):
     turns = (A['steering'] >= TURN_THRESHOLD) | (A['steering'] <= -TURN_THRESHOLD)
     A_turn = A[turns]         # turning
     A_straight = A[~turns]    # straight
-    
+
     # Keep a few straight ones
     A_merge = pd.concat([A_turn,A_straight.sample(frac=(1-DROP_THRESHOLD))])
 
@@ -57,48 +58,64 @@ def val_data(A):
 
     return np.array(x), np.array(y)
 
-def get_image_data(A,i,mode,flip=0,vshift=0.0,hshift=0.0):
+def get_image_data(A,i,mode,flip=0,wshift=0.0,hshift=0.0):
     modes = {1:('center',0.0),
-             2:('left',  0.3),
-             3:('right',-0.3)}
-    path = os.path.join('data',A[modes[mode][0]][i].strip())
-    xi = img_to_array(load_img(path))
-    xi = random_shift(xi,vshift,hshift,0,1,2)
-    yi = A.steering[i]+modes[mode][1]
+             2:('left',  0.2),
+             3:('right',-0.2)}
+    camera = modes[mode][0]
+    shift =  modes[mode][1]
+
+    # Image file path
+    path = os.path.join('data',A[camera][i].strip())
+
+    # Load appropriate image and
+    xi = cv2.imread(path) #img_to_array(load_img(path))
+    xi = cv2.cvtColor(xi,cv2.COLOR_BGR2RGB)
+    yi = A.steering[i]+shift
+
+    # Add translation width and height
+    xi = random_shift(xi,wshift,hshift,0,1,2)
+    yi += wshift*0.5  # If wshift = 0.1 (~ 30 pixels), steering will be shifted by 0.05
+
+    # Flip left/right
     if flip==1:
-        xi = flip_axis(xi,1)
+        xi = cv2.flip(xi,1)
         yi = -yi
 
     return xi,yi
-    
+
 
 def data_generator(A,BATCH_SIZE):
     while True:
         x, y = [], []
+        i = 0
         count = 0
         while count < BATCH_SIZE:
-            # Select an image by random
-            i = np.random.randint(0,len(A))
 
-            # Drop the selection with a certain probability if it's straight
-            #if (abs(A['steering'][i]) < TURN_THRESHOLD) and (np.random.uniform()<=DROP_THRESHOLD):
-            #    continue
-            
-            # Pick center (prob = 67%), left (16%) or right (16%) image 
+            # Drop the selection if speed is zero
+            if abs(A['speed'][i]) <= 0.1:
+                i += 1
+                continue
+
+            # Pick center (prob = 67%), left (16%) or right (16%) image
             mode = np.random.choice([1,1,1,1,2,3],1)
 
             # If center camera image, flip with 50% probability
-            flip = np.random.randint(0,2)
-            if mode[0] != 1: flip = 0
+            flip = np.random.randint(2)
 
             # Random shift in width and height
-            wshift,hshift = 0.2*np.random.random(2)
+            wshift,hshift = 0.2*np.random.random(2)-0.1
             xi,yi = get_image_data(A,i,mode[0],flip,wshift,0.0*hshift)
             x.append(xi)
             y.append(yi)
 
+            # Increment counter for batch
             count += 1
-           
+
+            # Reset to beginning once we reach end
+            i += 1
+            if (i==len(A)): i = 0
+
         yield np.array(x), np.array(y)
 
 def hist_A(A,BATCH_SIZE,N):
@@ -115,13 +132,13 @@ def hist_A(A,BATCH_SIZE,N):
 
     plt.hist(np.concatenate(y),bins=np.linspace(-1, 1, 50),color='b')
     plt.show()
-    
+
 
 def comma_ai(time_len=1):
     """
     A variant of the comma.ai model
     """
-    
+
     ch, row, col = 3, 160, 320  # camera format
 
     model = Sequential()
@@ -142,7 +159,7 @@ def comma_ai(time_len=1):
     model.add(Dense(1))
 
     model.compile(optimizer="adam", loss="mse")
-    
+
     return model
 
 def nvidia():
@@ -151,61 +168,63 @@ def nvidia():
     """
     model = Sequential()
 
-    # Crop layer
-    model.add(Cropping2D(cropping=((50,20), (0,0)), input_shape=(160,320,3)))
-    print("LAYER: {:30s} {}".format('Cropping',model.layers[-1].output_shape))
+    # Normalization
+    model.add(Lambda(lambda x: x/127.5 - 1.,
+                     input_shape=(160, 320, 3),
+                     output_shape=(160, 320, 3)))
+    print("LAYER: {:30s} {}".format('Normalization',model.layers[-1].output_shape))
 
-    # Layer 1
-    model.add(BatchNormalization())
-    print("LAYER: {:30s} {}".format('Batch-Normalization',model.layers[-1].output_shape))         
+    # Crop layer
+    model.add(Cropping2D(cropping=((50,20), (0,0))))
+    print("LAYER: {:30s} {}".format('Cropping',model.layers[-1].output_shape))
 
     # Layer 2
     model.add(Convolution2D(24,3,3,border_mode='same',activation='elu',subsample=(2,2)))
-    print("LAYER: {:30s} {}".format('Conv2D-24-3x3-s2',model.layers[-1].output_shape))    
+    print("LAYER: {:30s} {}".format('Conv2D-24-3x3-s2',model.layers[-1].output_shape))
     model.add(MaxPooling2D())
-    print("LAYER: {:30s} {}".format('Maxpool2D',model.layers[-1].output_shape))    
+    print("LAYER: {:30s} {}".format('Maxpool2D',model.layers[-1].output_shape))
 
     # Layer 3
     model.add(Convolution2D(36,3,3,border_mode='same',activation='elu',subsample=(2,2)))
-    print("LAYER: {:30s} {}".format('Conv2D-36-3x3-s2',model.layers[-1].output_shape))        
+    print("LAYER: {:30s} {}".format('Conv2D-36-3x3-s2',model.layers[-1].output_shape))
     model.add(MaxPooling2D())
     print("LAYER: {:30s} {}".format('Maxpool2D',model.layers[-1].output_shape))
-    
+
     # Layer 4
     model.add(Convolution2D(48,3,3,border_mode='same',activation='elu',subsample=(1,1)))
-    print("LAYER: {:30s} {}".format('Conv2D-48-3x3-s1',model.layers[-1].output_shape))        
+    print("LAYER: {:30s} {}".format('Conv2D-48-3x3-s1',model.layers[-1].output_shape))
     print("LAYER: {:30s} {}".format('Maxpool2D',model.layers[-1].output_shape))
-    
+
     # Layer 5
     model.add(Convolution2D(64,3,3,activation='elu',subsample=(1,1)))
-    print("LAYER: {:30s} {}".format('Conv2D-64-3x3-s1',model.layers[-1].output_shape))        
+    print("LAYER: {:30s} {}".format('Conv2D-64-3x3-s1',model.layers[-1].output_shape))
 
     # Layer 6a
     model.add(Flatten())
-    model.add(Dropout(0.5))
-    print("LAYER: {:30s} {}".format('Flatten',model.layers[-1].output_shape))    
+    model.add(Dropout(0.2))
+    print("LAYER: {:30s} {}".format('Flatten',model.layers[-1].output_shape))
 
-    
+
     # Layer 7
     model.add(Dense(500,activation='elu'))
     model.add(Dropout(0.5))
-    print("LAYER: {:30s} {}".format('FC',model.layers[-1].output_shape))        
+    print("LAYER: {:30s} {}".format('FC',model.layers[-1].output_shape))
 
 
     # Layer 8
     model.add(Dense(100,activation='elu'))
     model.add(Dropout(0.5))
-    print("LAYER: {:30s} {}".format('FC',model.layers[-1].output_shape))        
+    print("LAYER: {:30s} {}".format('FC',model.layers[-1].output_shape))
 
     # Layer 9
     model.add(Dense(10,activation='elu'))
-    print("LAYER: {:30s} {}".format('FC',model.layers[-1].output_shape))        
+    print("LAYER: {:30s} {}".format('FC',model.layers[-1].output_shape))
 
     # Output
     model.add(Dense(1, activation='linear'))
-    print("LAYER: {:30s} {}".format('OUTPUT',model.layers[-1].output_shape))        
+    print("LAYER: {:30s} {}".format('OUTPUT',model.layers[-1].output_shape))
 
-    # Training
+    # Minimization
     adamopt = Adam(lr=0.0001)
     model.compile(loss='mse',optimizer=adamopt)
     return model
@@ -223,8 +242,8 @@ def train(FILE):
     print("Number of examples available = {}".format(A_train.shape[0]))
     print("Batch size = {}".format(BATCH_SIZE))
     print("Samples per epoch = {}".format(N_SAMPLE))
-    hist_A(A_train,BATCH_SIZE,N_SAMPLE)
-    
+    #hist_A(A_train,BATCH_SIZE,N_SAMPLE)
+
     T = data_generator(A_train,BATCH_SIZE)
     net.fit_generator(T, samples_per_epoch=N_SAMPLE, nb_epoch=NB_EPOCHS,
                       validation_data=val_data(A_val), nb_val_samples=N_VAL)
@@ -244,7 +263,7 @@ def evaluate(FILE):
         y_act.append(yi)
         y_pred.append(output[0][0])
     K.clear_session()
-    
+
     plt.figure()
     plt.plot(y_act,label='Actual',color='b')
     plt.plot(y_pred,label='Predicted',color='r')
@@ -252,14 +271,14 @@ def evaluate(FILE):
     plt.show()
 
 
-if __name__=='__main__':    
-    
+if __name__=='__main__':
+
     FILE='model.h5'
     TURN_THRESHOLD = 0.05   # Threshold on steering angle to pick turns
-    DROP_THRESHOLD = 0.90   # Straight/Turning drop threshold
+    DROP_THRESHOLD = 0.95   # Straight/Turning drop threshold
     N_VAL = 256
     BATCH_SIZE = 128
-    N_SAMPLE = BATCH_SIZE*100
-    NB_EPOCHS = 4
+    N_SAMPLE = BATCH_SIZE*150
+    NB_EPOCHS = 10
     train(FILE)
     evaluate(FILE)
