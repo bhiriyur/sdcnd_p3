@@ -60,8 +60,8 @@ def val_data(A):
 
 def get_image_data(A,i,mode,flip=0,wshift=0.0,hshift=0.0):
     modes = {1:('center',0.0),
-             2:('left',  0.2),
-             3:('right',-0.2)}
+             2:('left',  0.35),
+             3:('right',-0.35)}
     camera = modes[mode][0]
     shift =  modes[mode][1]
 
@@ -75,10 +75,10 @@ def get_image_data(A,i,mode,flip=0,wshift=0.0,hshift=0.0):
 
     # Add translation width and height
     xi = random_shift(xi,wshift,hshift,0,1,2)
-    yi += wshift*0.5  # If wshift = 0.1 (~ 30 pixels), steering will be shifted by 0.05
+    yi += wshift*0.75  # If wshift = 0.1 (~ 30 pixels), steering will be shifted by 0.05
 
     # Flip left/right
-    if flip==1:
+    if flip:
         xi = cv2.flip(xi,1)
         yi = -yi
 
@@ -90,6 +90,7 @@ def data_generator(A,BATCH_SIZE):
         x, y = [], []
         i = 0
         count = 0
+        flip = False
         while count < BATCH_SIZE:
 
             # Drop the selection if speed is zero
@@ -100,11 +101,8 @@ def data_generator(A,BATCH_SIZE):
             # Pick center (prob = 67%), left (16%) or right (16%) image
             mode = np.random.choice([1,1,1,1,2,3],1)
 
-            # If center camera image, flip with 50% probability
-            flip = np.random.randint(2)
-
             # Random shift in width and height
-            wshift,hshift = 0.2*np.random.random(2)-0.1
+            wshift,hshift = 0.4*np.random.random(2)-0.2
             xi,yi = get_image_data(A,i,mode[0],flip,wshift,0.0*hshift)
             x.append(xi)
             y.append(yi)
@@ -114,7 +112,9 @@ def data_generator(A,BATCH_SIZE):
 
             # Reset to beginning once we reach end
             i += 1
-            if (i==len(A)): i = 0
+            if (i==len(A)):
+                flip = not(flip)
+                i = 0
 
         yield np.array(x), np.array(y)
 
@@ -250,6 +250,21 @@ def train(FILE):
     net.save(FILE)
     K.clear_session()
 
+def retrain(FILE):
+    net = load_model('saved.h5')
+    A_train,A_val = read_data()
+
+    print("Number of examples available = {}".format(A_train.shape[0]))
+    print("Batch size = {}".format(BATCH_SIZE))
+    print("Samples per epoch = {}".format(N_SAMPLE))
+
+    T = data_generator(A_train,BATCH_SIZE)
+    net.fit_generator(T, samples_per_epoch=N_SAMPLE, nb_epoch=NB_EPOCHS,
+                      validation_data=val_data(A_val), nb_val_samples=N_VAL)
+    net.save(FILE)
+    K.clear_session()
+    
+
 
 def evaluate(FILE):
     net = load_model(FILE)
@@ -276,9 +291,10 @@ if __name__=='__main__':
     FILE='model.h5'
     TURN_THRESHOLD = 0.05   # Threshold on steering angle to pick turns
     DROP_THRESHOLD = 0.95   # Straight/Turning drop threshold
-    N_VAL = 256
+    N_VAL = 128
     BATCH_SIZE = 128
-    N_SAMPLE = BATCH_SIZE*150
-    NB_EPOCHS = 10
-    train(FILE)
+    N_SAMPLE = BATCH_SIZE*40
+    NB_EPOCHS = 1
+    #train(FILE)
+    retrain(FILE)
     evaluate(FILE)
