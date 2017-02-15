@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import sys
 from tqdm import tqdm
 
-def read_data(plot_hist=False):
+def read_data(DROP_THRESHOLD=0.0,plot_hist=False):
     """
     Reads the driving_log.csv and stores in a pandas dataframe.
     Analyzes the steering info and returns a balanced dataset with
@@ -23,12 +23,14 @@ def read_data(plot_hist=False):
     """
     A = pd.read_csv('data/driving_log.csv')
     turns = (A['steering'] >= TURN_THRESHOLD) | (A['steering'] <= -TURN_THRESHOLD)
+    A_sharp_turns = A[A['steering']>=0.1]
     A_turn = A[turns]         # turning
     A_straight = A[~turns]    # straight
 
     # Keep a few straight ones
-    A_merge = pd.concat([A_turn,A_straight.sample(frac=(1-DROP_THRESHOLD))])
-
+    #A_merge = pd.concat([A_turn,A_straight.sample(frac=1.0-DROP_THRESHOLD)])
+    A_merge = A_sharp_turns
+    
     # Shuffle rows
     A_merge = A_merge.sample(frac=1).reset_index(drop=True)
 
@@ -60,8 +62,8 @@ def val_data(A):
 
 def get_image_data(A,i,mode,flip=0,wshift=0.0,hshift=0.0):
     modes = {1:('center',0.0),
-             2:('left',  0.35),
-             3:('right',-0.35)}
+             2:('left',  0.25),
+             3:('right',-0.25)}
     camera = modes[mode][0]
     shift =  modes[mode][1]
 
@@ -75,7 +77,7 @@ def get_image_data(A,i,mode,flip=0,wshift=0.0,hshift=0.0):
 
     # Add translation width and height
     xi = random_shift(xi,wshift,hshift,0,1,2)
-    yi += wshift*0.75  # If wshift = 0.1 (~ 30 pixels), steering will be shifted by 0.05
+    yi += wshift*0.5  # If wshift = 0.1 (~ 30 pixels), steering will be shifted by 0.05
 
     # Flip left/right
     if flip:
@@ -90,7 +92,6 @@ def data_generator(A,BATCH_SIZE):
         x, y = [], []
         i = 0
         count = 0
-        flip = False
         while count < BATCH_SIZE:
 
             # Drop the selection if speed is zero
@@ -99,10 +100,12 @@ def data_generator(A,BATCH_SIZE):
                 continue
 
             # Pick center (prob = 67%), left (16%) or right (16%) image
-            mode = np.random.choice([1,1,1,1,2,3],1)
+            mode = np.random.choice([1,1,1,2,3],1)
+            #flip = np.random.choice([True,True,False],1)
+            flip = False
 
             # Random shift in width and height
-            wshift,hshift = 0.4*np.random.random(2)-0.2
+            wshift,hshift = 0.2*np.random.random(2)-0.1
             xi,yi = get_image_data(A,i,mode[0],flip,wshift,0.0*hshift)
             x.append(xi)
             y.append(yi)
@@ -218,6 +221,7 @@ def nvidia():
 
     # Layer 9
     model.add(Dense(10,activation='elu'))
+    model.add(Dropout(0.5))
     print("LAYER: {:30s} {}".format('FC',model.layers[-1].output_shape))
 
     # Output
@@ -250,9 +254,35 @@ def train(FILE):
     net.save(FILE)
     K.clear_session()
 
+
+def multitrain(FILE):
+    """
+    Build and train the network
+    """
+    net = nvidia()
+    #net = comma_ai()
+
+    for i in range(NB_EPOCHS):
+        DROP_THRESHOLD = i*0.1
+        saveFILE = "model1_{}.h5".format(i+1)
+        print("DROP_THRESHOLD={:4.2f} SAVEFILE={}".format(DROP_THRESHOLD,saveFILE))
+
+        A_train,A_val = read_data(DROP_THRESHOLD)
+
+        print("Number of examples available = {}".format(A_train.shape[0]))
+        print("Batch size = {}".format(BATCH_SIZE))
+        print("Samples per epoch = {}".format(N_SAMPLE))
+        #hist_A(A_train,BATCH_SIZE,N_SAMPLE)
+
+        T = data_generator(A_train,BATCH_SIZE)
+        net.fit_generator(T, samples_per_epoch=N_SAMPLE, nb_epoch=1,
+                          validation_data=val_data(A_val), nb_val_samples=N_VAL)
+        net.save(saveFILE)
+    K.clear_session()
+
 def retrain(FILE):
-    net = load_model('saved.h5')
-    A_train,A_val = read_data()
+    net = load_model('model1_1.h5')
+    A_train,A_val = read_data(DROP_THRESHOLD)
 
     print("Number of examples available = {}".format(A_train.shape[0]))
     print("Batch size = {}".format(BATCH_SIZE))
@@ -290,11 +320,12 @@ if __name__=='__main__':
 
     FILE='model.h5'
     TURN_THRESHOLD = 0.05   # Threshold on steering angle to pick turns
-    DROP_THRESHOLD = 0.95   # Straight/Turning drop threshold
-    N_VAL = 128
-    BATCH_SIZE = 128
-    N_SAMPLE = BATCH_SIZE*40
+    DROP_THRESHOLD = 1.0   # Straight/Turning drop threshold
+    N_VAL = 12
+    BATCH_SIZE = 256
+    N_SAMPLE = BATCH_SIZE*10
     NB_EPOCHS = 1
     #train(FILE)
     retrain(FILE)
-    evaluate(FILE)
+    #multitrain(FILE)
+    #evaluate(FILE)
